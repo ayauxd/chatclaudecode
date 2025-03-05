@@ -246,19 +246,76 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Function to update the tier based on interaction count
+    // Function to evaluate context depth
+    function evaluateContextDepth() {
+        // Get all user messages
+        const userMessages = conversationHistory.filter(msg => msg.role === 'user');
+        if (userMessages.length === 0) return 0;
+        
+        // Common keywords to look for
+        const keywords = [
+            'ai', 'consulting', 'writing', 'trip', 'story', 'code', 'travel', 
+            'business', 'project', 'design', 'marketing', 'creative', 'education',
+            'prompt', 'research', 'article', 'blog', 'essay', 'report', 'guide'
+        ];
+        
+        // Calculate score based on message count, specificity, and coherence
+        let score = 0;
+        
+        // Base score from message count (more messages = more context)
+        score += Math.min(userMessages.length * 0.5, 3);
+        
+        // Check for specificity in the last 3 messages
+        const recentMessages = userMessages.slice(-3);
+        recentMessages.forEach(msg => {
+            const content = msg.content.toLowerCase();
+            
+            // Check for keywords
+            keywords.forEach(keyword => {
+                if (content.includes(keyword)) score += 0.3;
+            });
+            
+            // Check for specificity indicators
+            if (/specific|detailed|focus|exactly|precise/i.test(content)) score += 0.5;
+            
+            // Check for question responses (shows engagement)
+            if (content.includes('?') && content.length > 20) score += 0.5;
+            
+            // Length indicates detail
+            score += Math.min(content.length / 100, 1);
+        });
+        
+        return Math.min(score, 10);
+    }
+    
+    // Function to check if we have enough context for a tier
+    function hasEnoughContextForTier(tier) {
+        const depth = evaluateContextDepth();
+        
+        if (tier === TIERS.QUICK) {
+            return depth >= 2 && interactionCount >= 1;
+        } else if (tier === TIERS.DETAILED) {
+            return depth >= 4 && interactionCount >= 3;
+        } else if (tier === TIERS.LEGENDARY) {
+            return depth >= 6 && interactionCount >= 5;
+        }
+        
+        return false;
+    }
+    
+    // Function to update the tier based on interaction count and context depth
     function updateTier() {
         const previousTier = currentTier;
         
-        // For demo purposes, we're using a faster progression than described in requirements
+        // Start with interaction-based progression
         if (interactionCount === 0) {
             currentTier = TIERS.INITIAL;
-        } else if (interactionCount >= 1 && interactionCount < 3) {
-            currentTier = TIERS.QUICK;
-        } else if (interactionCount >= 3 && interactionCount < 5) {
-            currentTier = TIERS.DETAILED;
-        } else if (interactionCount >= 5) {
+        } else if (hasEnoughContextForTier(TIERS.LEGENDARY)) {
             currentTier = TIERS.LEGENDARY;
+        } else if (hasEnoughContextForTier(TIERS.DETAILED)) {
+            currentTier = TIERS.DETAILED;
+        } else if (hasEnoughContextForTier(TIERS.QUICK)) {
+            currentTier = TIERS.QUICK;
         }
         
         // If tier changed, update the UI
@@ -271,6 +328,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 addTierUpgradeNotification(currentTier);
             }
         }
+        
+        return previousTier !== currentTier;
     }
 
     // Function to extract a meaningful topic from user input
@@ -663,8 +722,17 @@ document.addEventListener('DOMContentLoaded', () => {
         // Increment interaction count
         interactionCount++;
         
-        // Update tier based on new interaction count
-        updateTier();
+        // Update tier based on context depth and interaction count
+        // Returns true if we've changed tiers
+        const tierChanged = updateTier();
+        
+        // Get response style based on current tier
+        let responseStyle = "concise"; // Default
+        if (currentTier === TIERS.DETAILED) {
+            responseStyle = "thorough";
+        } else if (currentTier === TIERS.LEGENDARY) {
+            responseStyle = "highly detailed";
+        }
         
         // Show thinking indicator with tier-specific message
         const thinkingText = currentTier !== TIERS.INITIAL 
@@ -674,92 +742,125 @@ document.addEventListener('DOMContentLoaded', () => {
         showThinking(thinkingText);
         
         try {
-            // If we're at a milestone for generating prompts (3, 5, or 9 interactions)
-            let promptLevel = null;
-            if (interactionCount === 3) {
-                promptLevel = 'quick';
-            } else if (interactionCount === 5) {
-                promptLevel = 'detailed';
-            } else if (interactionCount === 9) {
-                promptLevel = 'legendary';
-            }
+            // Determine if we have enough context to generate a prompt
+            const contextDepth = evaluateContextDepth();
+            const readyForPrompt = {
+                [TIERS.QUICK]: contextDepth >= 2 && interactionCount >= 2,
+                [TIERS.DETAILED]: contextDepth >= 4 && interactionCount >= 4,
+                [TIERS.LEGENDARY]: contextDepth >= 6 && interactionCount >= 6
+            }[currentTier] || false;
             
-            // Get response from LLM based on current tier
-            let responseStyle = "concise"; // Default
-            if (currentTier === TIERS.DETAILED) {
-                responseStyle = "thorough";
-            } else if (currentTier === TIERS.LEGENDARY) {
-                responseStyle = "highly detailed";
-            }
-            
-            // If the input is ambiguous and we're not in the initial tier,
-            // we'll adjust our approach based on the tier
-            let fullResponse = "";
-            
-            if (isAmbiguous && currentTier !== TIERS.INITIAL) {
-                // In higher tiers, we handle ambiguity more proactively
-                const response = await getLLMResponse(responseStyle);
-                
-                // Add the response to the chat
-                hideThinking();
-                addMessage(response);
-                
-                // Only generate a prompt at milestones if the input isn't too ambiguous
-                if (promptLevel) {
-                    // For ambiguous inputs in higher tiers, we'll add a note before generating a prompt
-                    setTimeout(() => {
-                        addMessage("I'll try to create a prompt based on our conversation so far, but let me know if it's not quite what you're looking for.");
-                        
-                        // Then generate the prompt with a slight delay to create a conversational flow
-                        setTimeout(async () => {
-                            const generatedPrompt = await generatePrompt(promptLevel);
-                            
-                            // Add a message with a random prompt card introduction
-                            const randomMessage = promptCardMessages[Math.floor(Math.random() * promptCardMessages.length)];
-                            addMessage(randomMessage);
-                            
-                            // Add the prompt card
-                            const promptTitle = `${promptLevel.charAt(0).toUpperCase() + promptLevel.slice(1)} Prompt`;
-                            addPromptCard(promptTitle, generatedPrompt);
-                            
-                            // Suggest a refinement
-                            const refinementSuggestion = suggestRefinement(generatedPrompt);
-                            setTimeout(() => {
-                                addMessage(refinementSuggestion);
-                            }, 1000);
-                        }, 1000);
-                    }, 1500);
-                }
-                
-                return;
-            } 
-            
-            // For non-ambiguous inputs or initial tier, proceed normally
-            // Generate prompt at milestones
-            if (promptLevel) {
-                const generatedPrompt = await generatePrompt(promptLevel);
-                
-                // Add a message with a random prompt card introduction
-                const randomMessage = promptCardMessages[Math.floor(Math.random() * promptCardMessages.length)];
-                addMessage(randomMessage);
-                
-                // Add the prompt card
-                const promptTitle = `${promptLevel.charAt(0).toUpperCase() + promptLevel.slice(1)} Prompt`;
-                addPromptCard(promptTitle, generatedPrompt);
-            }
-            
+            // Get initial response from LLM
             const response = await getLLMResponse(responseStyle);
             
             // Add evolving phrase based on tier (except for initial tier)
-            fullResponse = response;
+            let fullResponse = response;
             if (currentTier !== TIERS.INITIAL) {
                 const phrase = getEvolvingPhrase(currentTier, userMessage);
-                fullResponse += " " + phrase;
+                
+                // Only add the phrase if it doesn't create redundancy
+                if (!response.toLowerCase().includes(phrase.toLowerCase())) {
+                    fullResponse += " " + phrase;
+                }
             }
             
             // Add the response to the chat
             hideThinking();
             addMessage(fullResponse);
+            
+            // If we have enough context and the input isn't too ambiguous, offer to generate a prompt
+            if (readyForPrompt && !isAmbiguous && currentTier !== TIERS.INITIAL) {
+                let promptOfferMessage = "";
+                let promptLevel = "";
+                
+                if (currentTier === TIERS.QUICK) {
+                    promptOfferMessage = "Hey, we're on a roll here! Looks like we've got enough to whip up a quick prompt—ready for it?";
+                    promptLevel = "quick";
+                } else if (currentTier === TIERS.DETAILED) {
+                    promptOfferMessage = "Oh yeah, we're on a roll! Looks like we have enough to generate a really detailed prompt for diving deep—want to go for it?";
+                    promptLevel = "detailed";
+                } else if (currentTier === TIERS.LEGENDARY) {
+                    promptOfferMessage = "Wow, we're really cooking now! Looks like we've got enough for an epic, legendary prompt—ready to see it?";
+                    promptLevel = "legendary";
+                }
+                
+                // Add the offer with a slight delay for conversational flow
+                setTimeout(() => {
+                    addMessage(promptOfferMessage);
+                    
+                    // Create custom buttons for Yes/No
+                    const buttonContainer = document.createElement('div');
+                    buttonContainer.style.display = 'flex';
+                    buttonContainer.style.gap = '10px';
+                    buttonContainer.style.marginBottom = '15px';
+                    buttonContainer.style.marginTop = '5px';
+                    buttonContainer.style.alignSelf = 'flex-start';
+                    
+                    const yesButton = document.createElement('button');
+                    yesButton.textContent = 'Yes, generate it!';
+                    yesButton.style.backgroundColor = 'var(--brand-color)';
+                    yesButton.style.color = 'var(--text-light)';
+                    yesButton.style.border = 'none';
+                    yesButton.style.padding = '8px 16px';
+                    yesButton.style.borderRadius = '4px';
+                    yesButton.style.cursor = 'pointer';
+                    
+                    const noButton = document.createElement('button');
+                    noButton.textContent = 'Not yet';
+                    noButton.style.backgroundColor = 'var(--text-secondary)';
+                    noButton.style.color = 'var(--text-light)';
+                    noButton.style.border = 'none';
+                    noButton.style.padding = '8px 16px';
+                    noButton.style.borderRadius = '4px';
+                    noButton.style.cursor = 'pointer';
+                    
+                    buttonContainer.appendChild(yesButton);
+                    buttonContainer.appendChild(noButton);
+                    messagesContainer.appendChild(buttonContainer);
+                    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                    
+                    // Handle button clicks
+                    yesButton.addEventListener('click', async () => {
+                        // Remove the buttons
+                        messagesContainer.removeChild(buttonContainer);
+                        
+                        // Show user's choice
+                        addMessage("Yes, generate it!", true);
+                        
+                        // Show thinking indicator
+                        showThinking("Generating your prompt...");
+                        
+                        // Generate the prompt
+                        const generatedPrompt = await generatePrompt(promptLevel);
+                        
+                        // Hide thinking indicator
+                        hideThinking();
+                        
+                        // Add a message with a random prompt card introduction
+                        const randomMessage = promptCardMessages[Math.floor(Math.random() * promptCardMessages.length)];
+                        addMessage(randomMessage);
+                        
+                        // Add the prompt card
+                        const promptTitle = `${promptLevel.charAt(0).toUpperCase() + promptLevel.slice(1)} Prompt`;
+                        const promptCard = addPromptCard(promptTitle, generatedPrompt);
+                        
+                        // Suggest a refinement with slight delay
+                        setTimeout(() => {
+                            const refinementSuggestion = suggestRefinement(generatedPrompt);
+                            addMessage(refinementSuggestion);
+                        }, 1500);
+                    });
+                    
+                    noButton.addEventListener('click', () => {
+                        // Remove the buttons
+                        messagesContainer.removeChild(buttonContainer);
+                        
+                        // Show user's choice and continue
+                        addMessage("Not yet", true);
+                        addMessage("No problem! Let's keep exploring your idea. What other aspects would you like to dive into?");
+                    });
+                }, 1500);
+            }
             
         } catch (error) {
             console.error('Error processing message:', error);

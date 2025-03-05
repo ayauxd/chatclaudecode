@@ -1,26 +1,31 @@
-# ChatOnClaude - Tiered Prompt System
+# ChatOnClaude - Conversational Tiered Prompt System
 
-A chat interface that guides the conversation through a tiered methodology using both Claude and ChatGPT, with advanced handling of unstructured inputs.
+A chat interface that guides the conversation toward generating high-quality prompts through natural dialogue and a tiered methodology, using both Claude and ChatGPT.
 
 ## Features
 
-- Three tiers of prompt generation:
-  - Quick Prompts (after first interaction)
-  - Detailed Prompts (after 3 interactions)
-  - Legendary Mode (after 5 interactions)
-- Support for both Claude and ChatGPT API integration
-- API key configuration via UI or .env file
-- Prompt generation at key milestones (interactions 3, 5, and 9)
-- Evolving phrases based on conversation topics
-- Responses styled according to the current tier
+- Three tiers of prompt generation based on conversation depth and quality:
+  - Quick Prompts (conversational, basic context)
+  - Detailed Prompts (more comprehensive)
+  - Legendary Mode (rich, creative details)
+- Natural, tone-matching conversation flow:
+  - Responds differently based on detected user tone (confused, excited, frustrated, neutral)
+  - Adjusts response style based on current tier (concise, thorough, highly detailed)
+  - Uses evolving phrases to encourage further exploration
+- Context-aware tier progression:
+  - Evaluates conversation depth based on specificity, keywords, and coherence
+  - Only offers prompts when there's sufficient context, not just based on message count
+  - Interactive prompt generation with user control (accept/decline offers)
 - Advanced handling of unstructured inputs:
   - Context recognition and disambiguation for vague queries
   - Decomposition of complex inputs into actionable components
   - Prioritization and hierarchical structuring of output
   - Contextual enhancement with relevant insights
   - Iterative refinement suggestions
-  - Adaptation to user preferences
-  - Transparent handling of assumptions
+- Technical features:
+  - Support for both Claude and ChatGPT API integration
+  - API key configuration via UI or .env file
+  - Prompts presented as attachments in chat
 
 ## Setup
 

@@ -99,63 +99,151 @@ function formatConversationForChatGPT(conversation) {
   }));
 }
 
+// Detect user tone from input
+function detectUserTone(input) {
+  const lowerInput = input.toLowerCase();
+  
+  // Check for confusion indicators
+  if (lowerInput.includes('what?') || lowerInput.includes('confused') || 
+      (lowerInput.includes('?') && lowerInput.length < 20)) {
+    return 'confused';
+  }
+  
+  // Check for excitement/enthusiasm
+  if (lowerInput.includes('love') || lowerInput.includes('excit') || 
+      lowerInput.includes('great') || lowerInput.includes('awesome') ||
+      lowerInput.includes('amazing')) {
+    return 'excited';
+  }
+  
+  // Check for negativity/frustration
+  if (lowerInput.includes('not working') || lowerInput.includes('bad') ||
+      lowerInput.includes('awful') || lowerInput.includes('terrible')) {
+    return 'frustrated';
+  }
+  
+  return 'neutral';
+}
+
+// Evaluate context depth from conversation
+function evaluateContextDepth(input, history) {
+  // Common keywords for context analysis
+  const keywords = [
+    'ai', 'consulting', 'writing', 'trip', 'story', 'code', 'travel', 
+    'business', 'project', 'design', 'marketing', 'creative', 'education',
+    'prompt', 'research', 'article', 'blog', 'essay', 'report', 'guide'
+  ];
+  
+  // Calculate specificity score based on keywords in input
+  const words = input.toLowerCase().split(/\s+/);
+  const specificityScore = words.filter(word => 
+    keywords.includes(word) || keywords.some(kw => word.includes(kw))
+  ).length;
+  
+  // Calculate coherence based on message history
+  const userMessages = history.filter(msg => msg.role === 'user');
+  const coherenceScore = userMessages.length * 0.5;
+  
+  // Look for specificity indicators
+  const hasSpecifics = /specific|detailed|focus|exactly|precise/i.test(input);
+  const specBonus = hasSpecifics ? 2 : 0;
+  
+  // Calculate total contextual depth
+  return specificityScore + coherenceScore + specBonus;
+}
+
 // Get LLM response endpoint
 app.post('/api/get-response', async (req, res) => {
   const { llm, conversation, style } = req.body;
   
   try {
-    // Enhanced system prompt to better handle unstructured inputs
+    // Get last user message
+    const lastUserMsg = conversation.filter(msg => msg.role === 'user').pop()?.content || "";
+    
+    // Detect tone and evaluate context depth
+    const userTone = detectUserTone(lastUserMsg);
+    const contextDepth = evaluateContextDepth(lastUserMsg, conversation);
+    
+    // Enhanced system prompt with simplified logic matching the pseudocode
     let systemPrompt = "";
     
     if (style === "concise") {
       systemPrompt = `
-        CrackedLLM response: You are a helpful prompt assistant. Provide a ${style} response.
+        CrackedLLM response: You are a conversational prompt assistant for Crack Prompts. Provide a ${style} response.
         
-        Guidelines for handling user input:
-        1. If the input is clear and specific, respond directly and helpfully.
-        2. If the input is vague or unstructured (e.g., "I need a prompt for something cool"), ask clarifying questions like "What's 'cool'—a story, a trip, or something else? Give me a starting point!"
-        3. If the input contains multiple elements (e.g., "travel, Japan, temples"), identify the core components and ask targeted questions to refine them.
-        4. Be transparent about any assumptions you make, e.g., "I'm assuming you mean a travel prompt—correct me if I'm wrong!"
-        5. Keep responses brief and focused, while still being helpful.
-        6. Adapt your tone to match the user's style.
+        The user's tone appears to be: ${userTone}
+        The conversation's context depth is: ${contextDepth}/10
         
-        Your purpose is to guide the user toward creating high-quality prompts through conversation.
+        Guidelines:
+        1. Keep responses brief and conversational (max 1-2 sentences).
+        2. Match the user's tone - ${userTone}:
+           - If confused: Clarify gently, "No worries, I can clarify! Are you asking about X or Y?"
+           - If excited: Match enthusiasm, "Love that energy! What's the next piece of this idea?"
+           - If frustrated: Be helpful, "Let's fix this. What specifically isn't working?"
+           - If neutral: Be friendly, "That's a great start! What vibe are you aiming for?"
+        
+        3. Focus on gathering just one more piece of context with each exchange.
+           - Ask targeted questions about the user's goal, audience, or specific details.
+           - If they mention multiple elements (e.g., "travel, Japan, temples"), ask about one specific aspect.
+        
+        4. DON'T give general advice - your purpose is to gather context for prompt generation, not to be a general AI assistant.
+        
+        Your goal is to guide the user toward creating prompts through friendly conversation.
       `;
     } 
     else if (style === "thorough") {
       systemPrompt = `
-        CrackedLLM response: You are a helpful prompt assistant. Provide a ${style} response.
+        CrackedLLM response: You are a conversational prompt assistant for Crack Prompts. Provide a ${style} response.
         
-        Guidelines for handling user input:
-        1. If the input is clear and specific, provide a thorough, well-structured response.
-        2. If the input is vague or unstructured, decompose it into possible interpretations and ask clarifying questions to narrow down the user's intent.
-        3. Prioritize critical details in your response, organizing information hierarchically.
-        4. Add relevant context or implications the user might not have mentioned, like best practices or creative angles.
-        5. Be transparent about assumptions while making educated guesses to move the conversation forward.
-        6. Adjust your level of detail based on the user's engagement pattern.
-        7. Offer to refine your suggestions based on feedback.
+        The user's tone appears to be: ${userTone}
+        The conversation's context depth is: ${contextDepth}/10
         
-        Your purpose is to guide the user toward creating high-quality prompts through conversation, providing more depth and context than in quick mode.
+        Guidelines:
+        1. Keep responses conversational but more detailed (2-3 sentences).
+        2. Match the user's tone - ${userTone}:
+           - If confused: Offer clear explanations, "I see where the confusion might be. Let me clarify..."
+           - If excited: Build on their enthusiasm, "That's fantastic! Let's explore this idea more..."
+           - If frustrated: Be supportive, "I understand that can be frustrating. Let's tackle this together by..."
+           - If neutral: Be engaging, "That's a solid start! Let's dig deeper into..."
+        
+        3. Focus on gathering 2-3 more pieces of context:
+           - Ask about related aspects that would enhance the prompt.
+           - If they mention a topic, explore the purpose, audience, and tone they want.
+        
+        4. Add relevant suggestions that could enhance their idea, but stay focused on prompt creation.
+        
+        5. Occasionally, if appropriate, you can say: "Oh yeah, we're on a roll! We have enough for a detailed prompt—want to see it?"
+        
+        Your goal is to guide the user toward creating richer prompts through conversation.
       `;
     }
     else if (style === "highly detailed") {
       systemPrompt = `
-        CrackedLLM response: You are a helpful prompt assistant. Provide a ${style} response.
+        CrackedLLM response: You are a conversational prompt assistant for Crack Prompts. Provide a ${style} response.
         
-        Guidelines for handling user input:
-        1. Conduct deep analysis of both explicit and implicit elements in the user's input.
-        2. For vague or unstructured inputs, offer multiple interpretations and pathways, asking nuanced questions to understand the user's exact needs.
-        3. Create a comprehensive response that addresses all possible aspects of the user's query, organized in a clear, logical structure.
-        4. Significantly enhance your response with relevant context, implications, best practices, examples, and creative angles the user might not have considered.
-        5. When making assumptions, explain your reasoning and offer alternatives.
-        6. Provide specialized insights that elevate the conversation beyond surface-level discussion.
-        7. Suggest iterative refinements and creative variations to explore.
+        The user's tone appears to be: ${userTone}
+        The conversation's context depth is: ${contextDepth}/10
         
-        Your purpose is to guide the user toward creating exceptional, expert-level prompts through rich, nuanced conversation.
+        Guidelines:
+        1. Provide more comprehensive responses (3-4 sentences), but keep them conversational.
+        2. Match and enhance the user's tone - ${userTone}:
+           - If confused: Offer thorough clarification with examples, "That's a great question. Let me break this down..."
+           - If excited: Mirror their enthusiasm and build it further, "I'm thrilled you're excited about this! This could be amazing because..."
+           - If frustrated: Be especially supportive, "I completely understand your frustration. Here's how we can approach this differently..."
+           - If neutral: Add enthusiasm, "That's a fascinating direction! Let's explore how we could take this to the next level..."
+        
+        3. Gather rich, nuanced details:
+           - Ask about creative angles, emotional resonance, or unexpected connections.
+           - Suggest potential directions they might not have considered.
+           - Connect their idea to broader contexts or applications.
+        
+        4. Occasionally, if appropriate, you can say: "Wow, we're really cooking now! This is turning into something legendary—want to see what I can craft with this?"
+        
+        Your goal is to guide the user toward creating exceptional, legendary prompts through rich conversation.
       `;
     }
     else {
-      systemPrompt = `CrackedLLM response: Provide a ${style} response.`;
+      systemPrompt = `CrackedLLM response: Provide a ${style} response matching the user's tone of ${userTone}.`;
     }
     
     if (llm === 'claude') {
@@ -209,66 +297,63 @@ app.post('/api/generate-prompt', async (req, res) => {
   const { level, conversation, llm } = req.body;
   
   try {
-    // Extract meaningful context from the conversation
+    // Extract all user messages from conversation
     const userMessages = conversation.filter(msg => msg.role === 'user');
     const lastUserMessage = userMessages.pop()?.content || "";
     const previousUserMessages = userMessages.map(msg => msg.content);
     
-    // Create a more advanced meta-prompt that handles unstructured inputs better
+    // Get full conversation context
+    const contextText = conversation.map(msg => `${msg.role}: ${msg.content}`).join("\n");
+    
+    // Simplified meta-prompt following the new logic
     let metaPrompt = "";
     
     if (level === "quick") {
       metaPrompt = `
-      Generate a concise, effective prompt based on this user input: "${lastUserMessage}"
+      Generate a concise, effective prompt based on the following conversation:
       
-      Context from previous messages (if any):
-      ${previousUserMessages.length > 0 ? previousUserMessages.join("\n") : "No previous context"}
+      ${contextText}
       
-      Follow these guidelines:
-      1. CONTEXT RECOGNITION: Identify the core intent and subject matter.
-      2. DECOMPOSITION: Break down any complex elements in the input.
-      3. PRIORITIZATION: Structure the prompt with main goals first, then supporting details.
-      4. CONTEXTUAL ENHANCEMENT: Add relevant context that might be missing.
-      5. FORMAT: Structure as "Write a [type] about [main focus], including [details]" 
+      Guidelines for Quick Prompt:
+      1. Keep it simple and clear (1-2 sentences).
+      2. Focus on the main topic or goal mentioned in the conversation.
+      3. Format as: "Write a [type] about [main focus], focusing on [key aspect]."
+      4. Make it ready to use with any AI assistant.
+      5. If the conversation is ambiguous, create a clear, focused prompt that captures the essence.
       
-      If the input is ambiguous, make reasonable assumptions but create a clear, focused prompt.
-      The prompt should be concise (1-2 sentences) and ready to use with an AI assistant.
+      The prompt should be concise and effective. Do not include explanations or context in your response, just the ready-to-use prompt.
       `;
     } 
     else if (level === "detailed") {
       metaPrompt = `
-      Generate a detailed, comprehensive prompt based on this user input: "${lastUserMessage}"
+      Generate a detailed, comprehensive prompt based on the following conversation:
       
-      Context from previous messages (if any):
-      ${previousUserMessages.length > 0 ? previousUserMessages.join("\n") : "No previous context"}
+      ${contextText}
       
-      Follow these guidelines:
-      1. CONTEXT RECOGNITION: Thoroughly analyze the intent, subject matter, and implied needs.
-      2. DECOMPOSITION: Break down all elements in the input into actionable components.
-      3. PRIORITIZATION: Structure the prompt with critical details first, then supporting elements.
-      4. CONTEXTUAL ENHANCEMENT: Add relevant context, implications, or best practices that would improve the prompt.
-      5. FORMAT: Structure as "Create a comprehensive [type] about [main focus], including [details], covering [aspects], with attention to [nuances]"
+      Guidelines for Detailed Prompt:
+      1. Create a more comprehensive prompt (2-3 sentences).
+      2. Incorporate multiple elements from the conversation, including context, goals, and specific details.
+      3. Format as: "Create a comprehensive [type] about [main focus], including [details], covering [aspects], with attention to [nuances]."
+      4. Add contextual elements that would make the output more valuable.
+      5. Make it ready to use with any AI assistant.
       
-      If the input is ambiguous, make reasonable assumptions but create a focused, thorough prompt.
-      The prompt should be detailed (3-5 sentences) and ready to use with an AI assistant.
+      The prompt should be detailed and effective. Do not include explanations or context in your response, just the ready-to-use prompt.
       `;
     } 
     else if (level === "legendary") {
       metaPrompt = `
-      Generate an expert-level, comprehensive prompt based on this user input: "${lastUserMessage}"
+      Generate an expert-level, comprehensive prompt based on the following conversation:
       
-      Context from previous messages (if any):
-      ${previousUserMessages.length > 0 ? previousUserMessages.join("\n") : "No previous context"}
+      ${contextText}
       
-      Follow these guidelines:
-      1. CONTEXT RECOGNITION: Conduct deep analysis of explicit and implicit intent, subject matter, and needs.
-      2. DECOMPOSITION: Break down all elements into detailed, actionable components and identify their relationships.
-      3. PRIORITIZATION: Create a hierarchical structure with primary focus, secondary elements, tertiary details.
-      4. CONTEXTUAL ENHANCEMENT: Significantly enrich with relevant context, implications, best practices, examples, and creative angles.
-      5. FORMAT: Structure as "Develop a comprehensive, authoritative [type] on [main focus] that addresses [aspects], examines [perspectives], incorporates [techniques/methods], navigates [challenges], and culminates in [outcome/insight]"
+      Guidelines for Legendary Prompt:
+      1. Create a rich, nuanced prompt (3-5 sentences).
+      2. Incorporate all elements from the conversation, including subtle context, implied goals, and creative directions.
+      3. Format as: "Develop a comprehensive, authoritative [type] on [main focus] that addresses [aspects], examines [perspectives], incorporates [techniques/methods], navigates [challenges], and culminates in [outcome/insight]."
+      4. Include creative angles, emotional elements, or specialized approaches.
+      5. Make it ready to use with any AI assistant.
       
-      Even if the input is brief or ambiguous, create a rich, nuanced prompt that would generate exceptional results.
-      The prompt should be highly detailed (5-8 sentences) and ready to use with an AI assistant.
+      The prompt should be exceptional and inspiring. Do not include explanations or context in your response, just the ready-to-use prompt.
       `;
     }
     
