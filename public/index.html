@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prompt Assistant</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <meta name="description" content="An AI assistant that helps you craft high-quality prompts for ChatGPT or Claude.">
+</head>
+<body>
+    <div class="container">
+        <div id="chat-container">
+            <div id="progress-bar">
+                <div id="progress-indicator"></div>
+            </div>
+            
+            <div id="messages"></div>
+            
+            <div id="thinking-indicator" class="hidden">
+                <span>Thinking</span>
+                <span class="dots"><span>.</span><span>.</span><span>.</span></span>
+            </div>
+            
+            <form id="message-form">
+                <textarea id="message-input" placeholder="Ask me to help you craft the perfect prompt..."></textarea>
+                <button type="submit" id="send-button">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M22 2L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+            </form>
+        </div>
+        
+        <div id="tier-indicators">
+            <div class="tier-indicator" id="tier-quick">
+                <div class="tier-marker"></div>
+                <span>Quick Prompts</span>
+            </div>
+            <div class="tier-indicator" id="tier-detailed">
+                <div class="tier-marker"></div>
+                <span>Detailed Prompts</span>
+            </div>
+            <div class="tier-indicator" id="tier-legendary">
+                <div class="tier-marker"></div>
+                <span>Legendary Mode</span>
+            </div>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
