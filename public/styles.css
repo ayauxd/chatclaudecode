@@ -100,6 +100,34 @@ body {
     line-height: 1.6;
 }
 
+/* Style for sender names in messages */
+.message strong,
+.message b {
+    font-weight: 600;
+    color: var(--brand-color);
+}
+
+/* Add styling for the name prefix */
+.message::before {
+    content: attr(data-sender);
+    display: block;
+    font-weight: 600;
+    margin-bottom: 5px;
+    font-size: 0.85em;
+    color: var(--brand-color);
+    opacity: 0.9;
+}
+
+/* Style for user name in messages */
+.user-message::before {
+    color: var(--text-secondary);
+}
+
+/* Style for bot name in messages */
+.bot-message::before {
+    color: var(--brand-color);
+}
+
 .user-message {
     background-color: var(--tier-1-color);
     align-self: flex-end;

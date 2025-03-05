@@ -16,6 +16,8 @@ app.use(bodyParser.json());
 let claudeApiKey = process.env.CLAUDE_API_KEY || "";
 let chatgptApiKey = process.env.OPENAI_API_KEY || "";
 let defaultLLM = process.env.DEFAULT_LLM || "claude";
+let botName = process.env.BOT_NAME || "CrackBot";
+let brandName = process.env.BRAND_NAME || "Cracked Prompts";
 let claudeClient = null;
 let openaiClient = null;
 
@@ -53,9 +55,97 @@ app.get('/api/check-config', (req, res) => {
     success: true,
     claudeConfigured: !!claudeClient,
     chatgptConfigured: !!openaiClient,
-    defaultLLM: defaultLLM
+    defaultLLM: defaultLLM,
+    botName: botName,
+    brandName: brandName
   });
 });
+
+// Function to validate if a response meets the criteria for the current mode
+function isValidResponse(response, style, contextDepth) {
+  // Check if response is concise enough for the style
+  const wordCount = response.split(/\s+/).length;
+  
+  const maxWords = {
+    'concise': 30,       // Quick Prompts: Max 30 words
+    'thorough': 60,      // Detailed Prompts: Max 60 words
+    'highly detailed': 100  // Legendary Mode: Max 100 words
+  }[style] || 30;
+  
+  // If response is too long, it fails validation
+  if (wordCount > maxWords) {
+    return false;
+  }
+  
+  // Check if response is conversational (has questions, etc.)
+  const hasQuestion = response.includes('?');
+  const hasConversationalMarkers = /\b(let's|how about|what if|tell me|share more|love|great)\b/i.test(response);
+  
+  // Adjust requirements based on context depth
+  if (contextDepth < 3) {
+    // For low context, we need questions to gather more info
+    return hasQuestion || hasConversationalMarkers;
+  } else if (contextDepth < 6) {
+    // For medium context, conversational markers are enough
+    return hasConversationalMarkers;
+  } else {
+    // For high context, it can be more direct
+    return true;
+  }
+}
+
+// Function to enforce the conversational style
+function enforceConversationalStyle(response, style, tone, contextDepth) {
+  // If the response is already valid, return it
+  if (isValidResponse(response, style, contextDepth)) {
+    return response;
+  }
+  
+  // Trim the response if it's too long
+  const words = response.split(/\s+/);
+  const maxWords = {
+    'concise': 30,
+    'thorough': 60,
+    'highly detailed': 100
+  }[style] || 30;
+  
+  let trimmedResponse = words.slice(0, maxWords).join(' ');
+  
+  // Ensure it ends with proper punctuation
+  if (!trimmedResponse.endsWith('.') && !trimmedResponse.endsWith('?') && !trimmedResponse.endsWith('!')) {
+    trimmedResponse += '.';
+  }
+  
+  // If low context depth, add a question to gather more info
+  if (contextDepth < 3 && !trimmedResponse.includes('?')) {
+    const questions = {
+      'confused': " Can you clarify what you're looking for?",
+      'excited': " What specific aspect gets you most excited?",
+      'frustrated': " What part seems most challenging to you?",
+      'neutral': " What more can you tell me about this?"
+    };
+    
+    trimmedResponse += questions[tone] || questions['neutral'];
+  }
+  
+  // Add a conversational marker if needed
+  if (!(/\b(let's|how about|what if|tell me|share more|love|great)\b/i.test(trimmedResponse))) {
+    const markers = {
+      'concise': " Let's explore this a bit more.",
+      'thorough': " I'd love to hear more about your specific goals.",
+      'highly detailed': " Let's dig into the details to create something exceptional."
+    };
+    
+    trimmedResponse += markers[style] || markers['concise'];
+  }
+  
+  // Add brand reference if not present
+  if (!trimmedResponse.includes(brandName)) {
+    trimmedResponse = trimmedResponse.replace(/\.$/, ` for ${brandName}.`);
+  }
+  
+  return trimmedResponse;
+}
 
 // API key configuration endpoint
 app.post('/api/config', (req, res) => {
@@ -259,9 +349,23 @@ app.post('/api/get-response', async (req, res) => {
         messages: formatConversationForClaude(conversation)
       });
       
+      // Extract the response text
+      let responseText = response.content[0].text;
+      
+      // Calculate context depth for validation
+      const contextDepth = evaluateContextDepth(lastUserMsg, conversation);
+      
+      // Enforce the conversational style
+      responseText = enforceConversationalStyle(responseText, style, userTone, contextDepth);
+      
+      // Prepend the bot name if not already present
+      if (!responseText.startsWith(`${botName} says:`)) {
+        responseText = `${botName} says: ${responseText}`;
+      }
+      
       res.json({
         success: true,
-        response: response.content[0].text
+        response: responseText
       });
     } 
     else if (llm === 'chatgpt') {
@@ -278,9 +382,23 @@ app.post('/api/get-response', async (req, res) => {
         messages: formattedMessages
       });
       
+      // Extract the response text
+      let responseText = response.choices[0].message.content;
+      
+      // Calculate context depth for validation
+      const contextDepth = evaluateContextDepth(lastUserMsg, conversation);
+      
+      // Enforce the conversational style
+      responseText = enforceConversationalStyle(responseText, style, userTone, contextDepth);
+      
+      // Prepend the bot name if not already present
+      if (!responseText.startsWith(`${botName} says:`)) {
+        responseText = `${botName} says: ${responseText}`;
+      }
+      
       res.json({
         success: true,
-        response: response.choices[0].message.content
+        response: responseText
       });
     } 
     else {

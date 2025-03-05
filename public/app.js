@@ -85,10 +85,29 @@ document.addEventListener('DOMContentLoaded', () => {
         const messageElement = document.createElement('div');
         messageElement.classList.add('message');
         messageElement.classList.add(isUser ? 'user-message' : 'bot-message');
-        messageElement.textContent = text;
         
-        // Add to conversation history
-        conversationHistory.push({ role: role, content: text });
+        // Process the text to separate name and content
+        let sender = isUser ? userName : botName;
+        let contentText = text;
+        
+        // Check if text already includes sender prefix
+        if (text.startsWith(`${sender} says:`)) {
+            contentText = text.replace(`${sender} says: `, '');
+        } else if (text.includes(' says: ')) {
+            // If it has another sender format, extract it
+            const parts = text.split(' says: ');
+            sender = parts[0];
+            contentText = parts[1];
+        }
+        
+        // Set the sender as a data attribute for CSS styling
+        messageElement.setAttribute('data-sender', `${sender} says:`);
+        
+        // Set the content text
+        messageElement.textContent = contentText;
+        
+        // Add to conversation history (without the name prefixes)
+        conversationHistory.push({ role: role, content: contentText });
         
         // Add tier-specific styling to bot messages
         if (!isUser) {
@@ -642,9 +661,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Add initial bot message
-    addMessage(tierMessages[TIERS.INITIAL].greeting);
-
+    // Bot and brand names
+    let botName = "CrackBot";
+    let brandName = "Cracked Prompts";
+    let userName = "User"; // Default, will prompt for real name
+    
     // Check if API keys are pre-configured on the server
     async function checkPreConfiguredKeys() {
         try {
@@ -652,13 +673,20 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
             
             if (data.success) {
-                // Set the configured APIs and selected LLM
+                // Set the configured APIs, selected LLM, and bot name
                 apiKeysConfigured.claude = data.claudeConfigured;
                 apiKeysConfigured.chatgpt = data.chatgptConfigured;
                 selectedLLM = data.defaultLLM;
                 
+                if (data.botName) botName = data.botName;
+                if (data.brandName) brandName = data.brandName;
+                
                 if (apiKeysConfigured.claude || apiKeysConfigured.chatgpt) {
-                    addMessage(`API keys are pre-configured! Using ${selectedLLM} for responses. You can start chatting now.`);
+                    // Welcome message with bot branding
+                    addMessage(`${botName} says: Hey there! I'm ${botName}, your guide to crafting amazing prompts for ${brandName}. What's your name?`);
+                    
+                    // Create a name input field
+                    promptForUserName();
                     return true;
                 }
             }
@@ -668,6 +696,71 @@ document.addEventListener('DOMContentLoaded', () => {
             return false;
         }
     }
+    
+    // Function to prompt for user's name
+    function promptForUserName() {
+        const nameContainer = document.createElement('div');
+        nameContainer.style.display = 'flex';
+        nameContainer.style.gap = '10px';
+        nameContainer.style.marginBottom = '15px';
+        nameContainer.style.marginTop = '5px';
+        nameContainer.style.alignSelf = 'flex-start';
+        
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.placeholder = 'Your name';
+        nameInput.style.padding = '8px 12px';
+        nameInput.style.borderRadius = '4px';
+        nameInput.style.border = '1px solid var(--border-color)';
+        nameInput.style.flex = '1';
+        
+        const submitButton = document.createElement('button');
+        submitButton.textContent = 'Continue';
+        submitButton.style.backgroundColor = 'var(--brand-color)';
+        submitButton.style.color = 'var(--text-light)';
+        submitButton.style.border = 'none';
+        submitButton.style.padding = '8px 16px';
+        submitButton.style.borderRadius = '4px';
+        submitButton.style.cursor = 'pointer';
+        
+        nameContainer.appendChild(nameInput);
+        nameContainer.appendChild(submitButton);
+        messagesContainer.appendChild(nameContainer);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        
+        // Focus on the name input
+        nameInput.focus();
+        
+        // Handle submission
+        submitButton.addEventListener('click', () => {
+            const name = nameInput.value.trim();
+            if (name) {
+                userName = name;
+                messagesContainer.removeChild(nameContainer);
+                
+                // Show the user's message
+                addMessage(name, true);
+                
+                // Respond to the name
+                addMessage(`${botName} says: Great to meet you, ${name}! What idea are you working on today? Let's craft a killer prompt for ${brandName}!`);
+            }
+        });
+        
+        // Allow pressing Enter to submit
+        nameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                submitButton.click();
+            }
+        });
+    }
+    
+    // Call the check function on page load
+    checkPreConfiguredKeys().then(preConfigured => {
+        if (!preConfigured) {
+            // If not pre-configured, show the initial message
+            addMessage(`${botName} says: ${tierMessages[TIERS.INITIAL].greeting}`);
+        }
+    });
 
     // Create a "Configure API Keys" button (shown only if keys aren't pre-configured)
     const configButton = document.createElement('button');
