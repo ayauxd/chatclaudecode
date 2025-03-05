@@ -662,7 +662,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Bot and brand names
-    let botName = "CrackBot";
+    let botName = "CrackedBot";
     let brandName = "Cracked Prompts";
     let userName = "User"; // Default, will prompt for real name
     

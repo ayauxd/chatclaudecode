@@ -16,7 +16,7 @@ app.use(bodyParser.json());
 let claudeApiKey = process.env.CLAUDE_API_KEY || "";
 let chatgptApiKey = process.env.OPENAI_API_KEY || "";
 let defaultLLM = process.env.DEFAULT_LLM || "claude";
-let botName = process.env.BOT_NAME || "CrackBot";
+let botName = process.env.BOT_NAME || "CrackedBot";
 let brandName = process.env.BRAND_NAME || "Cracked Prompts";
 let claudeClient = null;
 let openaiClient = null;
